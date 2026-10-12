@@ -1,14 +1,18 @@
 {
   "name": "opc",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --experimental-strip-types --test lib/domain/task.test.ts lib/domain/role.test.ts"
+    "test": "node --experimental-strip-types --test \"lib/**/*.test.ts\"",
+    "test:integration": "node --env-file=.env.local --import tsx --test \"tests/integration/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
+    "diff": "^9.0.0",
     "gsap": "^3.15.0",
     "mysql2": "^3.15.3",
     "next": "^15.5.4",
@@ -20,6 +24,7 @@
     "@types/node": "^24.5.2",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.2"
   }
 }

@@ -1,7 +1,11 @@
 node_modules
 .next
 .next-stale-*/
+.opc/
 .env
 .env.local
 *.log
 *.tsbuildinfo
+
+# 运行时生成的项目工作区内容（由 OPC 应用在运行时写入，不属于源码）
+workspaces/

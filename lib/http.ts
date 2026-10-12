@@ -3,7 +3,7 @@ import { RuleError } from "@/lib/domain/task";
 
 export async function handle(fn: () => Promise<unknown>) {
   try {
-    return NextResponse.json(await fn());
+    return NextResponse.json((await fn()) ?? {});
   } catch (error) {
     if (error instanceof RuleError) {
       return NextResponse.json({ error: error.message }, { status: 400 });

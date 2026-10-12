@@ -1,10 +1,26 @@
+import type {
+  ToolCallingModel,
+  ToolModelMessage,
+  ToolModelTurn,
+} from "./tool-loop";
+
 const endpoint = "https://api.deepseek.com/chat/completions";
 
 export const deepseekProvider = "deepseek";
 export const deepseekModel = "deepseek-flash";
 
 type ChatResponse = {
-  choices?: { message?: { content?: string | null; reasoning_content?: string | null } }[];
+  choices?: {
+    message?: {
+      content?: string | null;
+      reasoning_content?: string | null;
+      tool_calls?: {
+        id?: string;
+        type?: string;
+        function?: { name?: string; arguments?: string };
+      }[];
+    };
+  }[];
   error?: { message?: string };
 };
 
@@ -105,3 +121,84 @@ export async function callDeepSeek(input: { model: string; system: string; user:
   if (!result.text && !result.reasoning) throw new Error("DeepSeek 没有给出回复");
   return result;
 }
+
+function deepSeekMessage(message: ToolModelMessage): Record<string, unknown> {
+  if (message.role === "tool") {
+    return {
+      role: "tool",
+      tool_call_id: message.toolCallId,
+      content: message.content,
+    };
+  }
+  if (!("toolCalls" in message)) return message;
+  return {
+    role: "assistant",
+    content: message.content || null,
+    reasoning_content: message.reasoning || null,
+    tool_calls: message.toolCalls.map((call) => ({
+      id: call.id,
+      type: "function",
+      function: { name: call.name, arguments: call.arguments },
+    })),
+  };
+}
+
+export async function completeDeepSeekToolTurn(input: {
+  model: string;
+  messages: ToolModelMessage[];
+  tools: { name: string; description: string; inputSchema: Record<string, unknown> }[];
+  signal: AbortSignal;
+}): Promise<ToolModelTurn> {
+  const key = process.env.DEEPSEEK_API_KEY?.trim();
+  if (!key) throw new Error("还没有配置 DeepSeek 密钥");
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model: input.model,
+        messages: input.messages.map(deepSeekMessage),
+        tools: input.tools.map((tool) => ({
+          type: "function",
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.inputSchema,
+          },
+        })),
+        tool_choice: "auto",
+        thinking: { type: "enabled" },
+        reasoning_effort: "high",
+        stream: false,
+      }),
+      signal: input.signal,
+    });
+  } catch (error) {
+    if (input.signal.aborted) throw input.signal.reason ?? new Error("执行超时");
+    throw new Error("DeepSeek 没有连上", { cause: error });
+  }
+  const payload = (await response.json().catch(() => ({}))) as ChatResponse;
+  if (!response.ok) {
+    const detail = payload.error?.message?.trim() ?? "";
+    throw new Error(detail ? `DeepSeek 拒绝了这次调用：${detail}` : "DeepSeek 拒绝了这次调用");
+  }
+  const message = payload.choices?.[0]?.message;
+  if (!message) throw new Error("DeepSeek 没有给出回复");
+  return {
+    text: message.content?.trim() ?? "",
+    reasoning: message.reasoning_content?.trim() ?? "",
+    toolCalls: (message.tool_calls ?? []).map((call, index) => ({
+      id: call.id || `tool-${index + 1}`,
+      name: call.function?.name ?? "",
+      arguments: call.function?.arguments ?? "{}",
+    })),
+  };
+}
+
+export const deepSeekToolModel: ToolCallingModel = {
+  complete: completeDeepSeekToolTurn,
+};

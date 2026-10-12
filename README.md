@@ -316,6 +316,16 @@ inbox ──策划补齐验收与角色──► doing ──产出落地──�
 | 测试 | Node 自带的 `node:test` | 状态机不连数据库。用例在测试库上跑事务 |
 | 运行 | Node 进程加一个 MySQL 进程 | 本机用 Docker Compose 一起启动 |
 
+### 本机开发
+
+```powershell
+npm test
+npm run typecheck
+npm run dev -- --port 3000
+```
+
+同一个工作区只运行一个 `next dev`。执行 `npm run build` 前先停止开发服务，避免多个 Next.js 进程同时写 `.next`，导致路由清单或 chunk 损坏。
+
 连接串放在 `DATABASE_URL`，例如 `mysql://opc:opc@127.0.0.1:3306/opc`。密码不写进仓库。
 
 Python 可以在以后作为某个角色的可选脚本。它读导出的文件或只读查询，把结果路径交给看板的用例去改状态。脚本不直接 `UPDATE` 任务表。

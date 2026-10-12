@@ -34,6 +34,12 @@ export function getPool(): Pool {
   return pool;
 }
 
+export async function closePool(): Promise<void> {
+  const current = pool;
+  pool = null;
+  if (current) await current.end();
+}
+
 export async function withTransaction<T>(fn: (conn: PoolConnection) => Promise<T>): Promise<T> {
   const conn = await getPool().getConnection();
   try {
