@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OPC</title>
+  <style>
+    :root {
+      --bg: #0e0e0e;
+      --rail: #0e0e0e;
+      --side: #141414;
+      --panel: #171717;
+      --raised: #1f1f1f;
+      --line: rgba(255, 255, 255, 0.08);
+      --text: #f4f4f5;
+      --muted: #a1a1aa;
+      --faint: #71717a;
+      --blue: #3b82f6;
+      --blue-deep: #1d4ed8;
+      --ok: #34d399;
+      --warn: #fbbf24;
+      --danger: #fb7185;
+      --shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+      font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); }
+    button, input, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+
+    .app {
+      height: 100%;
+      display: grid;
+      grid-template-columns: 64px 300px minmax(340px, 1fr) minmax(320px, 400px);
+    }
+
+    .rail {
+      border-right: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 14px 0;
+      gap: 14px;
+    }
+
+    .mark {
+      width: 36px;
+      height: 36px;
+      display: block;
+    }
+
+    .rail-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+    }
+    .rail-btn.active { background: var(--raised); color: var(--text); }
+
+    .side, .list, .detail {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .side { background: var(--side); border-right: 1px solid var(--line); }
+    .list { background: var(--bg); border-right: 1px solid var(--line); }
+    .detail { background: var(--panel); }
+
+    .side-head, .list-head, .detail-head {
+      padding: 16px 16px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .brand { display: flex; flex-direction: column; gap: 2px; }
+    .brand strong { font-size: 15px; font-weight: 620; letter-spacing: -0.02em; }
+    .brand span, .quiet { color: var(--faint); font-size: 12px; }
+
+    .scroll { overflow: auto; padding: 0 12px 16px; }
+    .scroll::-webkit-scrollbar { width: 10px; }
+    .scroll::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 99px; }
+
+    .focus {
+      margin: 0 12px 12px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #1a1a1a;
+    }
+    .focus p { margin: 8px 0 0; line-height: 1.5; font-size: 14px; }
+    .kicker {
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .stats { display: flex; gap: 8px; padding: 0 12px 12px; }
+    .stat {
+      flex: 1;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      background: transparent;
+      text-align: left;
+    }
+    .stat b { display: block; font-size: 18px; font-weight: 620; }
+    .stat span { color: var(--muted); font-size: 12px; }
+    .stat.on { border-color: rgba(59, 130, 246, 0.7); }
+
+    .group { margin-top: 8px; }
+    .group h2 {
+      margin: 8px 8px;
+      font-size: 12px;
+      font-weight: 560;
+      color: var(--muted);
+    }
+    .empty {
+      margin: 0 8px 8px;
+      color: var(--faint);
+      font-size: 13px;
+    }
+
+    .task {
+      width: 100%;
+      text-align: left;
+      border: 0;
+      background: transparent;
+      border-radius: 12px;
+      padding: 10px 10px;
+      display: grid;
+      grid-template-columns: 8px 1fr;
+      gap: 10px;
+      align-items: start;
+    }
+    .task:hover { background: rgba(255, 255, 255, 0.04); }
+    .task.selected { background: var(--raised); }
+    .dot { width: 8px; height: 8px; border-radius: 99px; margin-top: 6px; }
+    .dot.review { background: var(--warn); }
+    .dot.doing { background: var(--blue); }
+    .dot.blocked { background: var(--danger); }
+    .dot.inbox { background: var(--muted); }
+    .dot.done { background: var(--ok); }
+    .task b { display: block; font-weight: 580; font-size: 14px; }
+    .meta { margin-top: 4px; color: var(--faint); font-size: 12px; display: flex; gap: 8px; }
+
+    .composer {
+      margin-top: auto;
+      padding: 12px;
+    }
+    .composer form {
+      display: flex;
+      gap: 8px;
+      align-items: end;
+      border: 1px solid var(--line);
+      background: #141414;
+      border-radius: 16px;
+      padding: 10px;
+      box-shadow: var(--shadow);
+    }
+    textarea {
+      flex: 1;
+      resize: none;
+      border: 0;
+      background: transparent;
+      outline: none;
+      min-height: 44px;
+      line-height: 1.45;
+    }
+    .send, .primary, .ghost {
+      border-radius: 10px;
+      border: 1px solid transparent;
+      padding: 8px 12px;
+    }
+    .send, .primary { background: var(--text); color: #111; font-weight: 620; }
+    .ghost { background: transparent; border-color: var(--line); color: var(--text); }
+    .send:disabled, .primary:disabled { opacity: 0.4; cursor: default; }
+
+    .detail-head { border-bottom: 1px solid var(--line); align-items: flex-start; }
+    .detail-head h1 { margin: 4px 0 0; font-size: 18px; font-weight: 620; letter-spacing: -0.02em; }
+    .pill {
+      border-radius: 99px;
+      padding: 4px 8px;
+      font-size: 12px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+    }
+    .section { padding: 14px 16px 0; }
+    .section h3 { margin: 0 0 8px; font-size: 12px; color: var(--muted); font-weight: 560; }
+    .section p, .section li { font-size: 14px; line-height: 1.55; }
+    .section ul { margin: 0; padding-left: 18px; }
+    .path {
+      display: block;
+      color: #d4d4d8;
+      background: #111;
+      border-radius: 8px;
+      padding: 6px 8px;
+      margin-top: 6px;
+      font-family: Consolas, ui-monospace, monospace;
+      font-size: 12px;
+    }
+    .actions {
+      display: flex;
+      gap: 8px;
+      padding: 16px;
+      margin-top: auto;
+      border-top: 1px solid var(--line);
+    }
+    .decision {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #111;
+      border-radius: 10px;
+      padding: 8px 10px;
+      margin-top: 8px;
+    }
+    label.check { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 13px; margin-top: 8px; }
+    .banner {
+      margin: 12px 16px 0;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(59, 130, 246, 0.12);
+      color: #bfdbfe;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="rail" aria-label="主导航">
+      <svg class="mark" viewBox="0 0 32 32" role="img" aria-label="OPC">
+        <defs>
+          <linearGradient id="opc" x1="4" y1="2" x2="28" y2="30">
+            <stop stop-color="#60a5fa" />
+            <stop offset="1" stop-color="#1d4ed8" />
+          </linearGradient>
+        </defs>
+        <rect width="32" height="32" rx="9" fill="url(#opc)" />
+        <path d="M11 20.5V13.2c0-1.3 1-2.3 2.3-2.3h7.4" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" />
+        <circle cx="20.2" cy="19.6" r="2.15" fill="#fff" />
+      </svg>
+      <button class="rail-btn active" type="button" aria-label="看板" title="看板">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6">
+          <rect x="2" y="2" width="5" height="14" rx="1.2"></rect>
+          <rect x="9" y="2" width="7" height="6" rx="1.2"></rect>
+          <rect x="9" y="10" width="7" height="6" rx="1.2"></rect>
+        </svg>
+      </button>
+    </aside>
+
+    <section class="side">
+      <div class="side-head">
+        <div class="brand">
+          <strong>OPC</strong>
+          <span>一人团队</span>
+        </div>
+        <span class="quiet">本机</span>
+      </div>
+      <div class="focus">
+        <div class="kicker">本周唯一重点</div>
+        <p id="week">把第一期文件骨架落到仓库里，并用 t-001 走到待批准。</p>
+        <div class="quiet" style="margin-top:8px">2026-10-11 至 2026-10-18</div>
+      </div>
+      <div class="stats">
+        <button class="stat on" type="button" id="stat-review"><b id="n-review">1</b><span>待批准</span></button>
+        <button class="stat" type="button" id="stat-blocked"><b id="n-blocked">0</b><span>阻塞</span></button>
+      </div>
+      <div class="scroll">
+        <div class="kicker" style="padding:4px 8px">最近决定</div>
+        <p class="empty" id="latest-decision">尚无已生效决定。</p>
+      </div>
+    </section>
+
+    <section class="list">
+      <div class="list-head">
+        <strong>现在</strong>
+        <span class="quiet">进行中最多 2 条</span>
+      </div>
+      <div class="scroll" id="groups"></div>
+      <div class="composer">
+        <form id="inbox-form">
+          <textarea id="brief" rows="2" placeholder="丢进一句话。策划之后再收成任务。"></textarea>
+          <button class="send" type="submit">收件</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="detail" id="detail"></section>
+  </div>
+
+  <script>
+    const groups = ["doing", "review", "blocked", "inbox"];
+    const labels = { doing: "进行中", review: "待批准", blocked: "阻塞", inbox: "收件", done: "完成" };
+    const roles = { engineer: "工程", planner: "策划", researcher: "研究", operator: "运营" };
+
+    let tasks = [
+      {
+        id: "t-001",
+        title: "建立公司记忆和四个角色手册",
+        goal: "仓库里有可阅读的公司大脑和角色手册，后续任务能按同一套约定开工。",
+        role: "engineer",
+        status: "review",
+        priority: "now",
+        acceptance: [
+          "company 下四份文档存在",
+          "identity.md 写明第一期 · 文件骨架",
+          "四份角色手册都有开工步骤",
+          "本任务停在待批准"
+        ],
+        artifacts: [
+          "company/identity.md",
+          "company/goals.md",
+          "roles/planner.md",
+          "roles/engineer.md"
+        ],
+        notes: "2026-10-11 21:25 · engineer · 文件已写好，等你批准。",
+        decision: "",
+        record: true
+      }
+    ];
+    let selected = "t-001";
+    let seq = 1;
+
+    const groupsEl = document.querySelector("#groups");
+    const detailEl = document.querySelector("#detail");
+
+    function count(status) {
+      return tasks.filter((task) => task.status === status && task.priority === "now").length;
+    }
+
+    function render() {
+      document.querySelector("#n-review").textContent = count("review");
+      document.querySelector("#n-blocked").textContent = count("blocked");
+      const latest = tasks.find((task) => task.status === "done" && task.decision);
+      document.querySelector("#latest-decision").textContent = latest
+        ? latest.decision
+        : "尚无已生效决定。";
+
+      groupsEl.innerHTML = groups.map((status) => {
+        const items = tasks.filter((task) => task.status === status && task.priority === "now");
+        const body = items.length
+          ? items.map((task) => `
+            <button class="task ${task.id === selected ? "selected" : ""}" type="button" data-id="${task.id}">
+              <i class="dot ${task.status}"></i>
+              <span>
+                <b>${task.title}</b>
+                <span class="meta"><span>${task.id}</span><span>${roles[task.role]}</span></span>
+              </span>
+            </button>`).join("")
+          : `<p class="empty">没有${labels[status]}的任务</p>`;
+        return `<div class="group"><h2>${labels[status]}</h2>${body}</div>`;
+      }).join("");
+
+      const task = tasks.find((item) => item.id === selected);
+      if (!task) {
+        detailEl.innerHTML = `<p class="empty" style="padding:16px">选一条任务</p>`;
+        return;
+      }
+      const canReview = task.status === "review";
+      detailEl.innerHTML = `
+        <div class="banner">页面示意，操作只留在这个窗口。</div>
+        <div class="detail-head">
+          <div>
+            <div class="quiet">${task.id} · ${roles[task.role]}</div>
+            <h1>${task.title}</h1>
+          </div>
+          <span class="pill">${labels[task.status]}</span>
+        </div>
+        <div class="section">
+          <h3>目标</h3>
+          <p>${task.goal}</p>
+        </div>
+        <div class="section">
+          <h3>验收</h3>
+          <ul>${task.acceptance.map((item) => `<li>${item}</li>`).join("")}</ul>
+        </div>
+        <div class="section">
+          <h3>产出</h3>
+          ${task.artifacts.map((path) => `<code class="path">${path}</code>`).join("") || `<p class="empty">还没有产出</p>`}
+        </div>
+        <div class="section">
+          <h3>记录</h3>
+          <p>${task.notes}</p>
+          ${canReview ? `
+            <input class="decision" id="decision" placeholder="批准时写一句结论" value="${task.decision}" />
+            <label class="check"><input type="checkbox" id="record" ${task.record ? "checked" : ""} /> 记入决策</label>
+          ` : ""}
+        </div>
+        <div class="actions">
+          <button class="primary" type="button" id="approve" ${canReview ? "" : "disabled"}>批准</button>
+          <button class="ghost" type="button" id="return" ${canReview ? "" : "disabled"}>退回</button>
+        </div>`;
+
+      document.querySelector("#approve")?.addEventListener("click", () => {
+        const text = document.querySelector("#decision").value.trim();
+        if (!text) {
+          document.querySelector("#decision").focus();
+          return;
+        }
+        task.status = "done";
+        task.decision = text;
+        task.record = document.querySelector("#record").checked;
+        task.notes += `\n2026-10-11 22:20 · 你 · 批准。${text}`;
+        render();
+      });
+      document.querySelector("#return")?.addEventListener("click", () => {
+        task.status = "doing";
+        task.notes += "\n2026-10-11 22:20 · 你 · 退回，请按备注修改后再提交。";
+        render();
+      });
+    }
+
+    groupsEl.addEventListener("click", (event) => {
+      const button = event.target.closest(".task");
+      if (!button) return;
+      selected = button.dataset.id;
+      render();
+    });
+
+    document.querySelector("#inbox-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const brief = document.querySelector("#brief").value.trim();
+      if (!brief) return;
+      seq += 1;
+      const id = `t-${String(seq).padStart(3, "0")}`;
+      tasks.unshift({
+        id,
+        title: brief.slice(0, 28),
+        goal: "待策划收成可检查的验收。",
+        role: "planner",
+        status: "inbox",
+        priority: "now",
+        acceptance: ["策划补上可检查的验收"],
+        artifacts: [],
+        notes: brief,
+        decision: "",
+        record: true
+      });
+      selected = id;
+      document.querySelector("#brief").value = "";
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+services:
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: opc
+      MYSQL_USER: opc
+      MYSQL_PASSWORD: opc
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uopc", "-popc"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: mysql://opc:opc@mysql:3306/opc
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./company:/app/company
+      - ./tasks:/app/tasks
+      - ./roles:/app/roles
+
+volumes:
+  mysql_data:

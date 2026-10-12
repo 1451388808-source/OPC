@@ -1,0 +1,34 @@
+{
+  "id": "t-001",
+  "title": "建立公司记忆和四个角色手册",
+  "brief": "对，在想的详细一点，在开始些md",
+  "goal": "仓库里有可阅读的公司大脑和角色手册，后续任务能按同一套约定开工。",
+  "acceptance": [
+    "company/identity.md、company/goals.md、company/decisions.md、company/customers.md 四个文件存在",
+    "identity.md 有标题「当前阶段」，并且该节写明第一期 · 文件骨架",
+    "goals.md 有标题「本周唯一重点」，并且该节下面有一段非空正文",
+    "decisions.md 的「已生效的条目」在你批准本任务之前写明尚无",
+    "roles/planner.md、roles/engineer.md、roles/researcher.md、roles/operator.md 四个文件存在",
+    "每份角色手册都有这些标题：何时接手、开工必读、开工步骤、允许修改的路径、必须停下来问你的情况、完成定义",
+    "本任务 status 为 review，artifacts 列出上述八个文件，decision 为 null"
+  ],
+  "role": "engineer",
+  "status": "review",
+  "priority": "now",
+  "artifacts": [
+    "company/identity.md",
+    "company/goals.md",
+    "company/decisions.md",
+    "company/customers.md",
+    "roles/planner.md",
+    "roles/engineer.md",
+    "roles/researcher.md",
+    "roles/operator.md"
+  ],
+  "notes": "2026-10-11 21:25 · engineer · 已按第一期写入公司大脑和四份角色手册，任务停在 review。decisions.md 尚未追加生效条目。请核对 identity.md 末尾三项「待你填写」，以及 goals.md 的本季目标和本周重点是不是你要的。\n验收对照：\n1. company 下四份文件已写入\n2. identity.md「当前阶段」为第一期 · 文件骨架\n3. goals.md「本周唯一重点」有正文，周期为 2026-10-11 至 2026-10-18\n4. decisions.md「已生效的条目」为尚无\n5. roles 下四份手册已写入\n6. 四份手册均含规定的六个标题\n7. 本文件 status=review，artifacts 为上述八个路径，decision=null\n未做：把任何句子写入 decisions.md 的已生效条目，未建 app/。",
+  "needsApproval": true,
+  "blockReason": "",
+  "decision": null,
+  "createdAt": "2026-10-11T21:18:00+08:00",
+  "updatedAt": "2026-10-11T21:25:00+08:00"
+}
