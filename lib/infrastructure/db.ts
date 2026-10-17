@@ -5,7 +5,9 @@ import { repoRoot } from "./files";
 
 export type Sql = Pool | PoolConnection;
 
-let pool: Pool | null = null;
+declare global {
+  var __opcDatabasePool: Pool | undefined;
+}
 
 export function databaseConfig() {
   const raw = process.env.DATABASE_URL ?? "mysql://opc:opc@127.0.0.1:3306/opc";
@@ -20,23 +22,25 @@ export function databaseConfig() {
 }
 
 export function getPool(): Pool {
-  if (!pool) {
+  if (!globalThis.__opcDatabasePool) {
     const config = databaseConfig();
-    pool = mysql.createPool({
+    globalThis.__opcDatabasePool = mysql.createPool({
       ...config,
       waitForConnections: true,
-      connectionLimit: 10,
+      connectionLimit: 6,
+      maxIdle: 2,
+      idleTimeout: 10_000,
       connectTimeout: 8000,
       dateStrings: true,
       charset: "utf8mb4",
     });
   }
-  return pool;
+  return globalThis.__opcDatabasePool;
 }
 
 export async function closePool(): Promise<void> {
-  const current = pool;
-  pool = null;
+  const current = globalThis.__opcDatabasePool;
+  globalThis.__opcDatabasePool = undefined;
   if (current) await current.end();
 }
 

@@ -3,11 +3,13 @@ import test from "node:test";
 import {
   approveTask,
   deliverableIsDecision,
+  dispatchTaskToRole,
   doingCount,
   inboxPriority,
   nextTaskId,
   promoteTask,
   returnTask,
+  submitTaskForReview,
   titleFromBrief,
   type Task,
 } from "./task.ts";
@@ -98,4 +100,52 @@ test("promote blocks a third in-progress task and allows inbox", () => {
   const promoted = promoteTask(task({ priority: "next", status: "inbox" }), 2, iso);
   assert.equal(promoted.priority, "now");
   assert.equal(promoted.status, "inbox");
+});
+
+test("dispatch moves a current inbox task to doing with one responsible role", () => {
+  const dispatched = dispatchTaskToRole(
+    task({ status: "inbox", artifacts: [], role: "planner" }),
+    "engineer",
+    1,
+    stamp,
+    iso,
+  );
+  assert.equal(dispatched.status, "doing");
+  assert.equal(dispatched.role, "engineer");
+  assert.match(dispatched.notes, /交给engineer角色执行/);
+
+  assert.throws(
+    () => dispatchTaskToRole(task({ status: "inbox", artifacts: [] }), "engineer", 2, stamp, iso),
+    /进行中已满/,
+  );
+  assert.throws(
+    () => dispatchTaskToRole(task({ status: "inbox", priority: "next" }), "engineer", 0, stamp, iso),
+    /只有现在的任务/,
+  );
+  assert.throws(
+    () => dispatchTaskToRole(task({ status: "review" }), "engineer", 0, stamp, iso),
+    /只有收件或进行中/,
+  );
+});
+
+test("employee execution submits real artifacts for review", () => {
+  const review = submitTaskForReview(
+    task({ status: "doing", artifacts: [], decision: null }),
+    ["workspaces/c-001/p-001/index.html"],
+    "已完成首页。",
+    stamp,
+    iso,
+  );
+  assert.equal(review.status, "review");
+  assert.deepEqual(review.artifacts, ["workspaces/c-001/p-001/index.html"]);
+  assert.match(review.notes, /提交待批准。已完成首页/);
+
+  assert.throws(
+    () => submitTaskForReview(task({ status: "doing" }), [], "没有文件", stamp, iso),
+    /没有文件产出/,
+  );
+  assert.throws(
+    () => submitTaskForReview(task({ status: "inbox" }), ["a.txt"], "完成", stamp, iso),
+    /只有进行中的任务/,
+  );
 });

@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
+import { nextDistDir } from "./lib/infrastructure/next-dist-dir";
 
-const nextConfig: NextConfig = {
-  output: "standalone",
-};
-
-export default nextConfig;
+export default function nextConfig(phase: string): NextConfig {
+  return {
+    output: "standalone",
+    devIndicators: false,
+    distDir: nextDistDir(phase),
+  };
+}

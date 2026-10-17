@@ -77,13 +77,30 @@ const nodeWriter: AtomicFileWriter = {
   },
 };
 
+function assertRunId(runId: string): void {
+  if (!/^r-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(runId)) {
+    throw new Error("执行编号不合法");
+  }
+}
+
+export async function removeRunWorkspace(
+  runId: string,
+  options: ProjectWorkspaceOptions = {},
+): Promise<void> {
+  assertRunId(runId);
+  const repoRoot = path.resolve(options.repoRoot ?? process.cwd());
+  const runsRoot = path.resolve(repoRoot, ".opc", "runs");
+  const target = path.resolve(runsRoot, runId);
+  if (!target.startsWith(`${runsRoot}${path.sep}`)) throw new Error("执行目录不合法");
+  await assertNoSymlinks(repoRoot, target);
+  await fs.rm(target, { recursive: true, force: true });
+}
+
 export function runWorkspace(
   input: ProjectRef & { runId: string },
   options: RunWorkspaceOptions = {},
 ) {
-  if (!/^r-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.runId)) {
-    throw new Error("执行编号不合法");
-  }
+  assertRunId(input.runId);
   const repoRoot = path.resolve(options.repoRoot ?? process.cwd());
   const projectRoot = path.join(repoRoot, "workspaces", input.companyId, input.projectId);
   const runRoot = path.join(repoRoot, ".opc", "runs", input.runId);
@@ -100,7 +117,6 @@ export function runWorkspace(
   }
 
   async function loadManifest(): Promise<RunManifest> {
-    await ensureRunRoot();
     try {
       return JSON.parse(await fs.readFile(manifestFile, "utf8")) as RunManifest;
     } catch (error) {
@@ -134,6 +150,7 @@ export function runWorkspace(
     },
     async write(relativePath: string, content: string): Promise<StagedChange> {
       await project.ensure();
+      await ensureRunRoot();
       if (binaryExtensions.has(path.extname(relativePath).toLowerCase())) {
         throw new Error("当前只支持文本文件，不能创建这种二进制格式");
       }

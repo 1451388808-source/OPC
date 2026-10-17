@@ -7,6 +7,11 @@ import { ensureReady } from "./board";
 import { getPool, withTransaction } from "../infrastructure/db";
 import { readRoles } from "../infrastructure/files";
 import {
+  appendProjectEvent,
+  advanceProjectMessageBackfillState,
+  linkProjectEventSource,
+} from "../infrastructure/collaboration-store";
+import {
   allocateSerial,
   deleteMember,
   getCompany,
@@ -25,6 +30,7 @@ import {
   type CompanyRow,
   type ProjectRow,
 } from "../infrastructure/org-store";
+import { ensureProjectEventHistory } from "./project-event";
 
 export function isCompanyId(id: string): boolean {
   return /^c-\d{3}$/.test(id);
@@ -59,6 +65,116 @@ export async function loadOrg(): Promise<{ companies: CompanyRow[]; projects: Pr
       thinking: row.thinking,
     })),
   };
+}
+
+export async function removeCompany(id: string): Promise<void> {
+  if (!isCompanyId(id)) throw new RuleError("找不到这家公司");
+  await ensureReady();
+  await withTransaction(async (connection) => {
+    const company = await getCompany(connection, id);
+    if (!company) throw new RuleError("找不到这家公司");
+    await connection.query(
+      `DELETE calls FROM mcp_tool_calls calls
+       INNER JOIN project_workflows workflow ON workflow.id = calls.workflow_id
+       INNER JOIN projects project ON project.id = workflow.project_id
+       WHERE project.company_id = ?`,
+      [id],
+    );
+    await connection.query(
+      `DELETE request FROM project_decision_requests request
+       INNER JOIN project_workflows workflow ON workflow.id = request.workflow_id
+       INNER JOIN projects project ON project.id = workflow.project_id
+       WHERE project.company_id = ?`,
+      [id],
+    );
+    await connection.query(
+      `DELETE artifact FROM workflow_artifacts artifact
+       INNER JOIN project_workflows workflow ON workflow.id = artifact.workflow_id
+       INNER JOIN projects project ON project.id = workflow.project_id
+       WHERE project.company_id = ?`,
+      [id],
+    );
+    await connection.query(
+      `DELETE source FROM project_event_sources source
+       INNER JOIN project_events event ON event.id = source.project_event_id
+       INNER JOIN projects project ON project.id = event.project_id
+       WHERE project.company_id = ?`,
+      [id],
+    );
+    await connection.query(
+      `DELETE event FROM project_events event
+       INNER JOIN projects project ON project.id = event.project_id
+       WHERE project.company_id = ?`,
+      [id],
+    );
+    await connection.query(
+      `DELETE dependency FROM project_work_item_dependencies dependency
+       INNER JOIN project_work_items item ON item.id = dependency.work_item_id
+       INNER JOIN project_workflows workflow ON workflow.id = item.workflow_id
+       INNER JOIN projects project ON project.id = workflow.project_id
+       WHERE project.company_id = ?`,
+      [id],
+    );
+    await connection.query(
+      `DELETE item FROM project_work_items item
+       INNER JOIN project_workflows workflow ON workflow.id = item.workflow_id
+       INNER JOIN projects project ON project.id = workflow.project_id
+       WHERE project.company_id = ?`,
+      [id],
+    );
+    await connection.query(
+      `DELETE workflow FROM project_workflows workflow
+       INNER JOIN projects project ON project.id = workflow.project_id
+       WHERE project.company_id = ?`,
+      [id],
+    );
+    await connection.query(
+      `DELETE file FROM project_run_files file
+       INNER JOIN project_runs run ON run.id = file.run_id
+       INNER JOIN projects project ON project.id = run.project_id
+       WHERE project.company_id = ?`,
+      [id],
+    );
+    await connection.query(
+      `DELETE event FROM project_run_events event
+       INNER JOIN project_runs run ON run.id = event.run_id
+       INNER JOIN projects project ON project.id = run.project_id
+       WHERE project.company_id = ?`,
+      [id],
+    );
+    await connection.query(
+      `DELETE run FROM project_runs run
+       INNER JOIN projects project ON project.id = run.project_id
+       WHERE project.company_id = ?`,
+      [id],
+    );
+    await connection.query(
+      `DELETE member FROM project_members member
+       INNER JOIN projects project ON project.id = member.project_id
+       WHERE project.company_id = ?`,
+      [id],
+    );
+    await connection.query(
+      `DELETE thinking FROM project_thinking thinking
+       INNER JOIN projects project ON project.id = thinking.project_id
+       WHERE project.company_id = ?`,
+      [id],
+    );
+    await connection.query(
+      `DELETE message FROM project_messages message
+       INNER JOIN projects project ON project.id = message.project_id
+       WHERE project.company_id = ?`,
+      [id],
+    );
+    await connection.query(
+      `DELETE state FROM project_event_backfill_state state
+       INNER JOIN projects project ON project.id = state.project_id
+       WHERE project.company_id = ?`,
+      [id],
+    );
+    await connection.query("DELETE FROM projects WHERE company_id = ?", [id]);
+    await connection.query("DELETE FROM companies WHERE id = ?", [id]);
+  });
 }
 
 export async function createCompany(name: string): Promise<string> {
@@ -170,6 +286,40 @@ function transcript(room: ProjectRoom): string {
   );
 }
 
+export async function saveProjectMessageToTimeline(input: {
+  projectId: string;
+  speaker: "boss" | "employee";
+  roleId: string;
+  storedBody: string;
+  publicText: string;
+  eventMetadata?: Record<string, unknown>;
+  createdAt: string;
+}): Promise<{ messageId: number; eventId: number }> {
+  return withTransaction(async (connection) => {
+    const messageId = await insertProjectMessage(
+      connection,
+      input.projectId,
+      input.speaker,
+      input.roleId,
+      input.storedBody,
+      input.createdAt,
+    );
+    const eventId = await appendProjectEvent(connection, {
+      projectId: input.projectId,
+      workflowId: null,
+      workItemId: null,
+      actorType: input.speaker === "boss" ? "boss" : "agent",
+      actorId: input.speaker === "boss" ? null : input.roleId,
+      kind: input.speaker === "boss" ? "user_message" : "agent_message",
+      body: { text: input.publicText, ...(input.eventMetadata ?? {}) },
+      createdAt: input.createdAt,
+    });
+    await linkProjectEventSource(connection, "project_message", String(messageId), eventId);
+    await advanceProjectMessageBackfillState(connection, input.projectId, messageId, input.createdAt);
+    return { messageId, eventId };
+  });
+}
+
 async function replyInProject(
   companyId: string,
   projectId: string,
@@ -225,7 +375,14 @@ async function replyInProject(
     }
     if (projectThinking) await saveProjectThinking(getPool(), projectId, roleId, projectThinking, shanghaiTime().iso);
     const body = reasoning ? composeReply(reasoning, spoken) : spoken;
-    await insertProjectMessage(getPool(), projectId, "employee", roleId, body, shanghaiTime().iso);
+    await saveProjectMessageToTimeline({
+      projectId,
+      speaker: "employee",
+      roleId,
+      storedBody: body,
+      publicText: spoken,
+      createdAt: shanghaiTime().iso,
+    });
   }
 }
 
@@ -234,11 +391,13 @@ export async function sayInProject(
   text: string,
   roleId: string,
   emit: (event: ProjectEvent) => void = () => {},
+  eventMetadata: Record<string, unknown> = {},
 ): Promise<void> {
   const message = text.trim();
   if (!message) throw new RuleError("先写一句话");
   if (!isProjectId(projectId)) throw new RuleError("找不到这个项目");
   await ensureReady();
+  await ensureProjectEventHistory(projectId);
   const pool = getPool();
   const project = await getProject(pool, projectId);
   if (!project) throw new RuleError("找不到这个项目");
@@ -247,7 +406,15 @@ export async function sayInProject(
   const targets = asked ? [asked] : members;
   if (targets.length === 0) throw new RuleError("先把员工加进项目，才有人接话");
   if (asked && !members.includes(asked)) throw new RuleError("先把这个员工加进项目");
-  await insertProjectMessage(pool, projectId, "boss", "", message, shanghaiTime().iso);
+  await saveProjectMessageToTimeline({
+    projectId,
+    speaker: "boss",
+    roleId: "",
+    storedBody: message,
+    publicText: message,
+    eventMetadata,
+    createdAt: shanghaiTime().iso,
+  });
   emit({ type: "user", text: message });
   await replyInProject(project.companyId, projectId, targets, emit);
 }

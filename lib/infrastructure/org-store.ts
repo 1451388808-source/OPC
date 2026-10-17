@@ -175,9 +175,10 @@ export async function insertProjectMessage(
   roleId: string,
   body: string,
   createdAt: string,
-): Promise<void> {
-  await sql.query(
+): Promise<number> {
+  const [result] = await sql.query(
     "INSERT INTO project_messages (project_id, speaker, role_id, body, created_at) VALUES (?, ?, ?, ?, ?)",
     [projectId, speaker, roleId || null, body, toSql(createdAt)],
   );
+  return Number((result as { insertId?: number }).insertId ?? 0);
 }

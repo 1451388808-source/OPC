@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { ProjectRun, ProjectRunEvent, ProjectRunFile, ProjectRunStatus } from "@/lib/domain/project-run";
-import { ProjectRunEventLine, runStatusLabel } from "./project-run-activity";
+import { ProjectRunEventList, runStatusLabel } from "./project-run-activity";
 
 type RunView = {
   run: ProjectRun;
@@ -97,7 +97,6 @@ export function ProjectRuns({
               setError(payload.message);
             }
           };
-          source.onerror = () => source?.close();
         }
       } catch (caught) {
         if (active) setError(caught instanceof Error ? caught.message : "没有完成");
@@ -116,6 +115,14 @@ export function ProjectRuns({
     () => members.find((member) => member.id === selected?.run.roleId)?.name ?? selected?.run.roleId,
     [members, selected],
   );
+  const hasStreamedSummary =
+    selected?.events.some(
+      (event) =>
+        event.kind === "message" &&
+        event.body !== null &&
+        typeof event.body === "object" &&
+        (event.body as Record<string, unknown>).delta === true,
+    ) ?? false;
 
   function openRun(runId: string) {
     setError("");
@@ -231,7 +238,7 @@ export function ProjectRuns({
               <span className={`pill run-pill ${selected.run.status}`}>{runStatusLabel[selected.run.status]}</span>
             </header>
             <div className="run-detail-scroll">
-              {selected.run.summary ? (
+              {selected.run.summary && !hasStreamedSummary ? (
                 <section className="run-section">
                   <h3>结果摘要</h3>
                   <p className="run-summary">{selected.run.summary}</p>
@@ -242,9 +249,7 @@ export function ProjectRuns({
                 <h3>执行记录</h3>
                 {selected.events.length === 0 ? <p className="empty">等待执行器。</p> : null}
                 <div className="run-events">
-                  {selected.events.map((event) => (
-                    <ProjectRunEventLine key={event.id} event={event} active={selected.run.status === "running"} />
-                  ))}
+                  <ProjectRunEventList events={selected.events} active={selected.run.status === "running"} />
                 </div>
               </section>
               <section className="run-section">
@@ -256,7 +261,11 @@ export function ProjectRuns({
                       <code>{file.path}</code>
                       <span>{file.operation === "create" ? "新建" : "修改"}</span>
                     </summary>
-                    <pre className="run-diff">{file.diff}</pre>
+                    {file.diff ? (
+                      <pre className="run-diff">{file.diff}</pre>
+                    ) : (
+                      <p className="empty">暂存内容已按保留策略清理。</p>
+                    )}
                   </details>
                 ))}
               </section>

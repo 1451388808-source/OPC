@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { runWorkspace } from "./run-workspace.ts";
+import { removeRunWorkspace, runWorkspace } from "./run-workspace.ts";
 
 const project = { companyId: "c-001", projectId: "p-001" };
 const runId = "r-11111111-1111-4111-8111-111111111111";
@@ -207,4 +207,15 @@ test("write rejects file formats that require binary encoders", async (t) => {
   await assert.rejects(() => workspace.write("slides.pptx", "plain text"), /只支持文本文件/);
   await assert.rejects(() => workspace.write("report.pdf", "plain text"), /只支持文本文件/);
   assert.equal((await workspace.write("文档/作文.doc", "<!DOCTYPE html>\n")).operation, "create");
+});
+
+test("run workspace cleanup removes only a validated run directory", async (t) => {
+  const repoRoot = await temporaryRepo(t);
+  const workspace = runWorkspace({ ...project, runId }, { repoRoot });
+  await workspace.write("notes.txt", "hello\n");
+
+  await removeRunWorkspace(runId, { repoRoot });
+
+  await assert.rejects(() => fs.stat(path.join(repoRoot, ".opc", "runs", runId)), /ENOENT/);
+  await assert.rejects(() => removeRunWorkspace("../outside", { repoRoot }), /执行编号不合法/);
 });

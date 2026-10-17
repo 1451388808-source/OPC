@@ -48,6 +48,42 @@ export function CreateCompanyForm() {
   );
 }
 
+export function RemoveCompanyButton({ companyId, name }: { companyId: string; name: string }) {
+  const router = useRouter();
+  const [error, setError] = useState("");
+
+  return (
+    <div className="remove-employee">
+      <button
+        className="trash"
+        type="button"
+        aria-label={`删除${name}`}
+        title={`删除${name}`}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!window.confirm(`删除公司"${name}"？公司下的项目、对话和协作记录都会一起删除，不能恢复。`)) return;
+          setError("");
+          void postJson(`/api/companies/${companyId}`, {}, "DELETE")
+            .then(() => {
+              router.push("/company");
+              router.refresh();
+            })
+            .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "没有完成"));
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4">
+          <path d="M2.5 3.5h9" strokeLinecap="round" />
+          <path d="M5 3.5V2.5h4v1" />
+          <path d="M3.5 3.5l.5 8h6l.5-8" />
+          <path d="M6 6v4M8 6v4" strokeLinecap="round" />
+        </svg>
+      </button>
+      {error ? <p className="alert">{error}</p> : null}
+    </div>
+  );
+}
+
 export function CreateProjectForm({ companyId }: { companyId: string }) {
   const router = useRouter();
   const [name, setName] = useState("");

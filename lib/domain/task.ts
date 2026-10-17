@@ -116,4 +116,50 @@ export function promoteTask(
   return { ...task, priority: "now", updatedAt: iso };
 }
 
+export function dispatchTaskToRole(
+  task: Task,
+  roleId: string,
+  currentDoing: number,
+  stamp: string,
+  iso: string,
+): Task {
+  if (task.priority !== "now") throw new RuleError("只有现在的任务可以派工");
+  if (task.status !== "inbox" && task.status !== "doing") {
+    throw new RuleError("只有收件或进行中的任务可以派工");
+  }
+  const role = roleId.trim();
+  if (!role) throw new RuleError("先选择员工");
+  if (task.status === "inbox" && currentDoing >= DOING_LIMIT) {
+    throw new RuleError("进行中已满 2 条，不能派工");
+  }
+  return {
+    ...task,
+    role,
+    status: "doing",
+    notes: appendNote(task.notes, stamp, "你", `交给${role}角色执行。`),
+    updatedAt: iso,
+  };
+}
+
+export function submitTaskForReview(
+  task: Task,
+  artifacts: string[],
+  summary: string,
+  stamp: string,
+  iso: string,
+): Task {
+  if (task.status !== "doing") throw new RuleError("只有进行中的任务可以提交待批准");
+  const paths = [...new Set(artifacts.map((item) => item.trim()).filter(Boolean))];
+  if (paths.length === 0) throw new RuleError("执行没有文件产出，不能提交待批准");
+  const text = summary.trim();
+  if (!text) throw new RuleError("完成摘要不能为空");
+  return {
+    ...task,
+    status: "review",
+    artifacts: paths,
+    notes: appendNote(task.notes, stamp, task.role, `提交待批准。${text}`),
+    updatedAt: iso,
+  };
+}
+
 export const BLOCK_REASON = "目标已变，需重新规划";

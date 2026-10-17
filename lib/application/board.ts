@@ -20,6 +20,13 @@ import {
   readTasksFromFiles,
 } from "../infrastructure/files";
 import {
+  listCompanies,
+  listProjects,
+  listStaff,
+} from "../infrastructure/org-store";
+import { listTaskProjectRuns } from "../infrastructure/project-run-store";
+import { listTaskProjectWorkflows } from "../infrastructure/collaboration-store";
+import {
   allocateTaskId,
   blockOpenNowTasks,
   getGoal,
@@ -41,6 +48,27 @@ export type BoardData = {
   latestDecision: string | null;
   tasks: Task[];
   roles: RoleDefinition[];
+  dispatchProjects: {
+    id: string;
+    name: string;
+    companyId: string;
+    companyName: string;
+    members: string[];
+  }[];
+  taskRuns: {
+    id: string;
+    taskId: string;
+    projectId: string;
+    roleId: string;
+    status: import("../domain/project-run").ProjectRunStatus;
+  }[];
+  taskWorkflows: {
+    id: string;
+    taskId: string;
+    projectId: string;
+    coordinatorRoleId: string;
+    status: import("../domain/collaboration").WorkflowStatus;
+  }[];
 };
 
 let ready: Promise<void> | null = null;
@@ -93,11 +121,16 @@ async function exportChanged(tasks: Task[], decisionsToo: boolean): Promise<stri
 export async function loadBoard(): Promise<BoardData> {
   await ensureReady();
   const pool = getPool();
-  const [tasks, goal, decision, roles] = await Promise.all([
+  const [tasks, goal, decision, roles, companies, projects, staff, runs, workflows] = await Promise.all([
     listTasks(pool),
     getGoal(pool),
     latestDecision(pool),
     readRoles(),
+    listCompanies(pool),
+    listProjects(pool),
+    listStaff(pool),
+    listTaskProjectRuns(pool),
+    listTaskProjectWorkflows(pool),
   ]);
   const weekLabel =
     goal?.weekStart && goal.weekEnd ? `${goal.weekStart} 至 ${goal.weekEnd}` : "";
@@ -107,6 +140,31 @@ export async function loadBoard(): Promise<BoardData> {
     latestDecision: decision,
     tasks,
     roles,
+    dispatchProjects: projects.map((project) => ({
+      id: project.id,
+      name: project.name,
+      companyId: project.companyId,
+      companyName: companies.find((company) => company.id === project.companyId)?.name ?? project.companyId,
+      members: staff.filter((member) => member.projectId === project.id).map((member) => member.roleId),
+    })),
+    taskRuns: runs
+      .filter((run) => run.taskId)
+      .map((run) => ({
+        id: run.id,
+        taskId: run.taskId!,
+        projectId: run.projectId,
+        roleId: run.roleId,
+        status: run.status,
+      })),
+    taskWorkflows: workflows
+      .filter((workflow) => workflow.taskId)
+      .map((workflow) => ({
+        id: workflow.id,
+        taskId: workflow.taskId!,
+        projectId: workflow.projectId,
+        coordinatorRoleId: workflow.coordinatorRoleId,
+        status: workflow.status,
+      })),
   };
 }
 

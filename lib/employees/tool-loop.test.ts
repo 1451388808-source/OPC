@@ -9,6 +9,8 @@ import {
   type ToolCallingModel,
   type ToolModelTurn,
 } from "./tool-loop.ts";
+import { ToolExecutionError } from "../mcp/error.ts";
+import type { EmployeeToolset } from "./tools.ts";
 import { projectWorkspace } from "../project-workspace/index.ts";
 import { runWorkspace } from "../project-workspace/run-workspace.ts";
 
@@ -225,6 +227,87 @@ test("tool loop stops after three equivalent tool errors", async (t) => {
         emit: async () => {},
       }),
     /同类工具错误达到 3 次/,
+  );
+});
+
+test("tool loop stops a non-retryable tool failure after one call and preserves its code", async () => {
+  let modelCalls = 0;
+  const model: ToolCallingModel = {
+    async complete() {
+      modelCalls += 1;
+      return {
+        text: "",
+        reasoning: "",
+        toolCalls: [{ id: `validation-${modelCalls}`, name: "run_validation", arguments: '{"profile":"frontend"}' }],
+      };
+    },
+  };
+  const tools: EmployeeToolset = {
+    definitions: [],
+    async execute() {
+      throw new ToolExecutionError({
+        code: "missing_configuration",
+        message: "项目没有配置 opc-validation.json",
+        retryable: false,
+      });
+    },
+    async changedPaths() {
+      return [];
+    },
+  };
+
+  await assert.rejects(
+    () =>
+      executeToolLoop({
+        model,
+        modelName: "fake",
+        system: "system",
+        user: "user",
+        tools,
+        emit: async () => {},
+      }),
+    (error: unknown) =>
+      error instanceof ToolExecutionError && error.failure.code === "missing_configuration",
+  );
+  assert.equal(modelCalls, 1);
+});
+
+test("tool loop emits streamed reasoning and final text without duplicating the completed turn", async (t) => {
+  const repoRoot = await temporaryRepo(t);
+  const ref = { companyId: "c-001", projectId: "p-001" };
+  const project = projectWorkspace(ref, { repoRoot });
+  await project.ensure();
+  const run = runWorkspace({ ...ref, runId }, { repoRoot });
+  const tools = createProjectFileTools({ project, run });
+  const model: ToolCallingModel = {
+    async complete(request) {
+      await request.onReasoningDelta("先检查");
+      await request.onReasoningDelta("文件。");
+      await request.onTextDelta("已经");
+      await request.onTextDelta("完成。");
+      return { text: "已经完成。", reasoning: "先检查文件。", toolCalls: [] };
+    },
+  };
+  const events: { kind: string; body: unknown }[] = [];
+
+  const result = await executeToolLoop({
+    model,
+    modelName: "fake",
+    system: "system",
+    user: "user",
+    tools,
+    emit: async (event) => events.push(event),
+  });
+
+  assert.equal(result.summary, "已经完成。");
+  assert.deepEqual(
+    events,
+    [
+      { kind: "reasoning", body: { text: "先检查", delta: true } },
+      { kind: "reasoning", body: { text: "文件。", delta: true } },
+      { kind: "message", body: { text: "已经", delta: true } },
+      { kind: "message", body: { text: "完成。", delta: true } },
+    ],
   );
 });
 

@@ -1,0 +1,32 @@
+{"id":"route-conversation-001","text":"你们现在能做什么？","expected":"conversation","source":"phase-5-acceptance-a"}
+{"id":"route-conversation-002","text":"这个项目现在是什么状态？","expected":"conversation","source":"phase-4-router"}
+{"id":"route-conversation-003","text":"解释一下这个接口","expected":"conversation","source":"phase-4-router"}
+{"id":"route-conversation-004","text":"为什么测试会失败？","expected":"conversation","source":"phase-5-known-risk"}
+{"id":"route-conversation-005","text":"你怎么看当前方案？","expected":"conversation","source":"phase-5-known-risk"}
+{"id":"route-conversation-006","text":"介绍一下项目结构","expected":"conversation","source":"phase-5-known-risk"}
+{"id":"route-conversation-007","text":"现在有哪些进行中的任务？","expected":"conversation","source":"phase-5-known-risk"}
+{"id":"route-conversation-008","text":"能否说明健康检查的设计？","expected":"conversation","source":"phase-5-known-risk"}
+{"id":"route-conversation-009","text":"这个错误是什么意思？","expected":"conversation","source":"phase-5-known-risk"}
+{"id":"route-conversation-010","text":"目前是谁负责复核？","expected":"conversation","source":"phase-5-known-risk"}
+{"id":"route-conversation-011","text":"整理一下","expected":"conversation","source":"phase-4-ambiguous"}
+{"id":"route-conversation-012","text":"帮我看看","expected":"conversation","source":"phase-5-ambiguous"}
+{"id":"route-conversation-013","text":"讨论一下发布风险","expected":"conversation","source":"phase-5-known-risk"}
+{"id":"route-conversation-014","text":"汇报当前进度","expected":"conversation","source":"phase-5-known-risk"}
+{"id":"route-conversation-015","text":"说明一下你刚才的决定","expected":"conversation","source":"phase-5-known-risk"}
+{"id":"route-workflow-001","text":"实现登录页面并补充测试","expected":"new_workflow","source":"phase-4-router"}
+{"id":"route-workflow-002","text":"任务：整理发布文档","expected":"new_workflow","source":"phase-4-router"}
+{"id":"route-workflow-003","text":"给项目增加健康检查接口并补测试","expected":"new_workflow","source":"phase-4-acceptance"}
+{"id":"route-workflow-004","text":"修复登录失败后页面不显示错误的问题","expected":"new_workflow","source":"phase-5-engineering"}
+{"id":"route-workflow-005","text":"创建一份本周运营报告","expected":"new_workflow","source":"phase-5-deliverable"}
+{"id":"route-workflow-006","text":"更新 README 中的安装说明","expected":"new_workflow","source":"phase-5-deliverable"}
+{"id":"route-workflow-007","text":"新增项目健康检查 API","expected":"new_workflow","source":"phase-5-deliverable"}
+{"id":"route-workflow-008","text":"编写数据库迁移脚本","expected":"new_workflow","source":"phase-5-deliverable"}
+{"id":"route-workflow-009","text":"优化看板页面的移动端布局","expected":"new_workflow","source":"phase-5-deliverable"}
+{"id":"route-workflow-010","text":"测试待决问题恢复流程并输出报告","expected":"new_workflow","source":"phase-5-deliverable"}
+{"id":"route-workflow-011","text":"制作一份第五期实施方案","expected":"new_workflow","source":"phase-5-deliverable"}
+{"id":"route-workflow-012","text":"迁移旧项目事件数据","expected":"new_workflow","source":"phase-5-deliverable"}
+{"id":"route-workflow-013","text":"重构 MCP 工具错误处理模块","expected":"new_workflow","source":"phase-5-deliverable"}
+{"id":"route-workflow-014","text":"接入只读研究服务","expected":"new_workflow","source":"phase-5-deliverable"}
+{"id":"route-workflow-015","text":"执行：生成本次改动的验证报告","expected":"new_workflow","source":"phase-5-deliverable"}
+{"id":"route-workflow-016","text":"做一个web网页","expected":"new_workflow","source":"real-failure-2026-10-14"}
+{"id":"route-workflow-017","text":"我想做一个web网页","expected":"new_workflow","source":"real-failure-2026-10-14"}

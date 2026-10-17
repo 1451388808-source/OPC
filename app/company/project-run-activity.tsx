@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { ProjectRun, ProjectRunEvent, ProjectRunFile, ProjectRunStatus } from "@/lib/domain/project-run";
+import {
+  groupProjectRunEvents,
+  type ProjectRunEventGroup,
+} from "@/lib/domain/project-run-events";
 
 export type RunView = {
   run: ProjectRun;
@@ -35,6 +39,14 @@ export function ProjectRunActivity({
   const [error, setError] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
   const current = view?.run ?? run;
+  const hasStreamedSummary =
+    view?.events.some(
+      (event) =>
+        event.kind === "message" &&
+        event.body !== null &&
+        typeof event.body === "object" &&
+        (event.body as Record<string, unknown>).delta === true,
+    ) ?? false;
 
   useEffect(() => {
     let active = true;
@@ -76,7 +88,6 @@ export function ProjectRunActivity({
               setError(update.message);
             }
           };
-          source.onerror = () => source?.close();
         }
       } catch (caught) {
         if (active) setError(caught instanceof Error ? caught.message : "没有读到执行记录");
@@ -108,10 +119,8 @@ export function ProjectRunActivity({
         </div>
         {error ? <p className="run-event error">{error}</p> : null}
         {!view ? <p className="run-event">正在读取执行记录。</p> : null}
-        {view?.events.map((event) => (
-          <ProjectRunEventLine key={event.id} event={event} active={current.status === "running"} />
-        ))}
-        {view?.run.summary ? (
+        {view ? <ProjectRunEventList events={view.events} active={current.status === "running"} /> : null}
+        {view?.run.summary && !hasStreamedSummary ? (
           <div className="run-chat-summary">
             <strong>完成摘要</strong>
             <p>{view.run.summary}</p>
@@ -142,39 +151,69 @@ export function ProjectRunActivity({
   );
 }
 
-export function ProjectRunEventLine({
-  event,
+export function ProjectRunEventList({
+  events,
   active = false,
 }: {
-  event: ProjectRunEvent;
+  events: ProjectRunEvent[];
   active?: boolean;
 }) {
-  const body =
-    event.body && typeof event.body === "object"
-      ? (event.body as Record<string, unknown>)
-      : { text: String(event.body ?? "") };
-  if (event.kind === "reasoning") {
+  const groups = groupProjectRunEvents(events);
+  return groups.map((group, index) => (
+    <ProjectRunEventLine
+      key={group.id}
+      group={group}
+      active={
+        active &&
+        index === groups.length - 1 &&
+        (group.kind === "reasoning" || group.kind === "message")
+      }
+    />
+  ));
+}
+
+function ProjectRunEventLine({
+  group,
+  active,
+}: {
+  group: ProjectRunEventGroup;
+  active: boolean;
+}) {
+  if (group.kind === "reasoning") {
     return (
       <details className="run-event reasoning" open={active || undefined}>
         <summary>思考</summary>
-        <p>{String(body.text ?? "")}</p>
+        <p>
+          {group.text}
+          {active ? <span className="caret" /> : null}
+        </p>
       </details>
     );
   }
-  if (event.kind === "tool_call") {
-    return <p className="run-event tool">调用工具：{String(body.name ?? "")}</p>;
+  if (group.kind === "tool_call") {
+    return <p className="run-event tool">调用工具：{group.name}</p>;
   }
-  if (event.kind === "tool_result") {
+  if (group.kind === "tool_result") {
     return (
-      <p className={body.ok === false ? "run-event tool error" : "run-event tool"}>
-        工具结果：{String(body.name ?? "")}
-        {body.ok === false ? ` · ${String(body.error ?? "失败")}` : " · 完成"}
+      <p className={group.ok === false ? "run-event tool error" : "run-event tool"}>
+        工具结果：{group.name}
+        {group.ok === false ? ` · ${group.error || "失败"}` : " · 完成"}
       </p>
     );
   }
+  if (group.kind === "message") {
+    if (!group.streamed) return <p className="run-event">{group.text}</p>;
+    return (
+      <div className="run-event streamed-message">
+        <strong>完成回复</strong>
+        <p>
+          {group.text}
+          {active ? <span className="caret" /> : null}
+        </p>
+      </div>
+    );
+  }
   return (
-    <p className={event.kind === "error" ? "run-event error" : "run-event"}>
-      {String(body.text ?? body.message ?? "")}
-    </p>
+    <p className="run-event error">{group.text}</p>
   );
 }

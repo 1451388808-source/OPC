@@ -83,6 +83,14 @@ export async function listProjectRuns(sql: Sql, projectId: string): Promise<Proj
   return rows.map(mapRun);
 }
 
+export async function listTaskProjectRuns(sql: Sql): Promise<ProjectRun[]> {
+  const rows = await queryRows<ProjectRunRow>(
+    sql,
+    "SELECT * FROM project_runs WHERE task_id IS NOT NULL ORDER BY created_at DESC, id DESC",
+  );
+  return rows.map(mapRun);
+}
+
 export async function updateProjectRun(sql: Sql, run: ProjectRun): Promise<void> {
   await sql.query(
     `UPDATE project_runs SET
@@ -100,12 +108,12 @@ export async function updateProjectRun(sql: Sql, run: ProjectRun): Promise<void>
   );
 }
 
-export async function findActiveTaskRun(sql: Sql, taskId: string): Promise<ProjectRun | null> {
+export async function findActiveTaskRun(sql: Sql, taskId: string, lock = false): Promise<ProjectRun | null> {
   const rows = await queryRows<ProjectRunRow>(
     sql,
     `SELECT * FROM project_runs
      WHERE task_id = ? AND status IN ('queued', 'running', 'review', 'applying')
-     ORDER BY created_at DESC LIMIT 1`,
+     ORDER BY created_at DESC LIMIT 1${lock ? " FOR UPDATE" : ""}`,
     [taskId],
   );
   return rows[0] ? mapRun(rows[0]) : null;
@@ -115,6 +123,17 @@ export async function listQueuedProjectRunIds(sql: Sql): Promise<string[]> {
   const rows = await queryRows<RowDataPacket & { id: string }>(
     sql,
     "SELECT id FROM project_runs WHERE status = 'queued' ORDER BY created_at, id",
+  );
+  return rows.map((row) => row.id);
+}
+
+export async function listExpiredProjectRunIds(sql: Sql, before: string): Promise<string[]> {
+  const rows = await queryRows<RowDataPacket & { id: string }>(
+    sql,
+    `SELECT id FROM project_runs
+     WHERE status IN ('approved', 'returned', 'failed') AND updated_at < ?
+     ORDER BY updated_at, id`,
+    [toSql(before)],
   );
   return rows.map((row) => row.id);
 }

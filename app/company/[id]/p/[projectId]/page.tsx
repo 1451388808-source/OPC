@@ -1,8 +1,10 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { openProject } from "@/lib/application/org";
+import { loadProjectTimeline } from "@/lib/application/project-event";
 import { loadProjectRuns } from "@/lib/application/project-run";
+import { loadProjectWorkflowSummaries } from "@/lib/application/collaboration";
 import { ProjectChat } from "../../../project-chat";
+import { ProjectHeader } from "../../../project-header";
 import { ProjectRuns } from "../../../project-runs";
 
 export const dynamic = "force-dynamic";
@@ -19,56 +21,39 @@ export default async function ProjectPage({
   const room = await openProject(id, projectId);
   if (!room) notFound();
   const view = query.view === "runs" ? "runs" : "chat";
-  const runs = await loadProjectRuns(projectId);
-  const base = `/company/${room.company.id}/p/${room.project.id}`;
+  const events = view === "chat" ? await loadProjectTimeline(projectId, 0, 500) : [];
+  const workflows = view === "chat" ? await loadProjectWorkflowSummaries(projectId) : [];
+  const runs = view === "runs" ? await loadProjectRuns(projectId) : [];
+  if (view === "chat") {
+    return (
+      <ProjectChat
+        companyId={room.company.id}
+        companyName={room.company.name}
+        projectId={room.project.id}
+        projectName={room.project.name}
+        members={room.members.map((member) => ({ id: member.id, name: member.name }))}
+        initialEvents={events}
+        initialWorkflows={workflows}
+      />
+    );
+  }
 
   return (
     <div className="chat">
-      <header className="chat-head">
-        <div>
-          <h1>{room.project.name}</h1>
-          <p className="quiet">
-            {room.company.name} · 在场员工看的是同一段对话
-          </p>
-        </div>
-        <div className="project-head-actions">
-          <nav className="project-tabs" aria-label="项目视图">
-            <Link className={view === "chat" ? "project-tab active" : "project-tab"} href={base}>
-              对话
-            </Link>
-            <Link
-              className={view === "runs" ? "project-tab active" : "project-tab"}
-              href={`${base}?view=runs`}
-            >
-              执行
-            </Link>
-          </nav>
-          <Link className="ghost" href={`/company/${room.company.id}`}>
-            返回
-          </Link>
-        </div>
-      </header>
-      {view === "chat" ? (
-        <ProjectChat
-          projectId={room.project.id}
-          members={room.members.map((member) => ({ id: member.id, name: member.name }))}
-          messages={room.messages.map((message) => ({
-            id: message.id,
-            name: message.name,
-            body: message.body,
-            you: message.speaker === "boss",
-          }))}
-          initialRuns={[...runs].reverse().slice(-10)}
-        />
-      ) : (
-        <ProjectRuns
-          projectId={room.project.id}
-          companyId={room.company.id}
-          members={room.members.map((member) => ({ id: member.id, name: member.name }))}
-          initialRuns={runs}
-          initialRunId={query.run ?? null}
-        />
-      )}
+      <ProjectHeader
+        companyId={room.company.id}
+        companyName={room.company.name}
+        projectId={room.project.id}
+        projectName={room.project.name}
+        view="runs"
+      />
+      <ProjectRuns
+        projectId={room.project.id}
+        companyId={room.company.id}
+        members={room.members.map((member) => ({ id: member.id, name: member.name }))}
+        initialRuns={runs}
+        initialRunId={query.run ?? null}
+      />
     </div>
   );
 }

@@ -6,18 +6,25 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "mcp:server": "node --import tsx mcp/server.ts",
     "test": "node --experimental-strip-types --test \"lib/**/*.test.ts\"",
-    "test:integration": "node --env-file=.env.local --import tsx --test \"tests/integration/**/*.test.ts\"",
+    "test:integration": "node --env-file=.env.local --import tsx --test --test-concurrency=1 \"tests/integration/**/*.test.ts\"",
+    "test:perf:events": "node scripts/perf-project-events.mjs",
+    "eval:routing": "node --experimental-strip-types scripts/eval-routing.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
+    "@modelcontextprotocol/client": "^2.3.1",
+    "@modelcontextprotocol/server": "^2.3.1",
     "diff": "^9.0.0",
     "gsap": "^3.15.0",
     "mysql2": "^3.15.3",
     "next": "^15.5.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "zod": "^4.1.11"
   },
   "devDependencies": {

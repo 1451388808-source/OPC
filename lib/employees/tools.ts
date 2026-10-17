@@ -3,7 +3,7 @@ import type { StagedChange } from "../project-workspace/run-workspace";
 import type { WorkspaceEntry, WorkspaceFile } from "../project-workspace";
 
 export type EmployeeToolDefinition = {
-  name: "list_files" | "read_file" | "write_file";
+  name: string;
   description: string;
   inputSchema: Record<string, unknown>;
 };

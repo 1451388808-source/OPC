@@ -148,6 +148,8 @@ export async function completeDeepSeekToolTurn(input: {
   messages: ToolModelMessage[];
   tools: { name: string; description: string; inputSchema: Record<string, unknown> }[];
   signal: AbortSignal;
+  onReasoningDelta: (delta: string) => Promise<void>;
+  onTextDelta: (delta: string) => Promise<void>;
 }): Promise<ToolModelTurn> {
   const key = process.env.DEEPSEEK_API_KEY?.trim();
   if (!key) throw new Error("还没有配置 DeepSeek 密钥");
@@ -173,7 +175,7 @@ export async function completeDeepSeekToolTurn(input: {
         tool_choice: "auto",
         thinking: { type: "enabled" },
         reasoning_effort: "high",
-        stream: false,
+        stream: true,
       }),
       signal: input.signal,
     });
@@ -181,24 +183,102 @@ export async function completeDeepSeekToolTurn(input: {
     if (input.signal.aborted) throw input.signal.reason ?? new Error("执行超时");
     throw new Error("DeepSeek 没有连上", { cause: error });
   }
-  const payload = (await response.json().catch(() => ({}))) as ChatResponse;
-  if (!response.ok) {
+  if (!response.ok || !response.body) {
+    const payload = (await response.json().catch(() => ({}))) as ChatResponse;
     const detail = payload.error?.message?.trim() ?? "";
     throw new Error(detail ? `DeepSeek 拒绝了这次调用：${detail}` : "DeepSeek 拒绝了这次调用");
   }
-  const message = payload.choices?.[0]?.message;
-  if (!message) throw new Error("DeepSeek 没有给出回复");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const toolCalls = new Map<number, { id: string; name: string; arguments: string }>();
+  const reasoningBatch = deltaBatch(input.onReasoningDelta);
+  const textBatch = deltaBatch(input.onTextDelta);
+  let buffer = "";
+  let text = "";
+  let reasoning = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const data = trimmed.slice(5).trim();
+      if (!data || data === "[DONE]") continue;
+      let payload: {
+        choices?: {
+          delta?: {
+            content?: string | null;
+            reasoning_content?: string | null;
+            tool_calls?: {
+              index?: number;
+              id?: string;
+              function?: { name?: string; arguments?: string };
+            }[];
+          };
+        }[];
+      };
+      try {
+        payload = JSON.parse(data) as typeof payload;
+      } catch {
+        continue;
+      }
+      const delta = payload.choices?.[0]?.delta;
+      const nextReasoning = delta?.reasoning_content ?? "";
+      const nextText = delta?.content ?? "";
+      if (nextReasoning) {
+        reasoning += nextReasoning;
+        await reasoningBatch.push(nextReasoning);
+      }
+      if (nextText) {
+        text += nextText;
+        await textBatch.push(nextText);
+      }
+      for (const call of delta?.tool_calls ?? []) {
+        const index = call.index ?? 0;
+        const current = toolCalls.get(index) ?? { id: "", name: "", arguments: "" };
+        if (call.id) current.id = call.id;
+        if (call.function?.name) current.name = call.function.name;
+        if (call.function?.arguments) current.arguments += call.function.arguments;
+        toolCalls.set(index, current);
+      }
+    }
+  }
+  await reasoningBatch.flush();
+  await textBatch.flush();
+  if (!text && !reasoning && toolCalls.size === 0) throw new Error("DeepSeek 没有给出回复");
   return {
-    text: message.content?.trim() ?? "",
-    reasoning: message.reasoning_content?.trim() ?? "",
-    toolCalls: (message.tool_calls ?? []).map((call, index) => ({
-      id: call.id || `tool-${index + 1}`,
-      name: call.function?.name ?? "",
-      arguments: call.function?.arguments ?? "{}",
-    })),
+    text: text.trim(),
+    reasoning: reasoning.trim(),
+    toolCalls: [...toolCalls.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([index, call]) => ({
+        id: call.id || `tool-${index + 1}`,
+        name: call.name,
+        arguments: call.arguments || "{}",
+      })),
   };
 }
 
 export const deepSeekToolModel: ToolCallingModel = {
   complete: completeDeepSeekToolTurn,
 };
+
+function deltaBatch(emit: (delta: string) => Promise<void>) {
+  let pending = "";
+  return {
+    async push(delta: string) {
+      pending += delta;
+      if (pending.length >= 32 || /[\n。！？.!?]$/.test(pending)) await this.flush();
+    },
+    async flush() {
+      if (!pending) return;
+      const current = pending;
+      pending = "";
+      await emit(current);
+    },
+  };
+}

@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PanelMotion } from "../components/motion";
-import { AddMemberForm, RemoveMemberButton } from "./forms";
+import { AddMemberForm, RemoveCompanyButton, RemoveMemberButton } from "./forms";
 
 export type CompanyListItem = { id: string; name: string };
 export type ProjectListItem = { id: string; companyId: string; name: string };
@@ -30,6 +30,10 @@ export function CompanyFrame({
   const projectId = pathname.match(/^\/company\/c-\d{3}\/p\/(p-\d{3})(?:\/|$)/)?.[1] ?? "";
   const visibleProjects = projects.filter((project) => project.companyId === companyId);
 
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 760px)").matches) setOpen(false);
+  }, [pathname]);
+
   return (
     <div className={open ? "module" : "module module-collapsed"}>
       <div className="module-side">
@@ -48,6 +52,9 @@ export function CompanyFrame({
                 <strong>{company.name}</strong>
                 <span>{company.id}</span>
               </Link>
+              <div className="card-actions">
+                <RemoveCompanyButton companyId={company.id} name={company.name} />
+              </div>
             </div>
           ))}
           {companyId ? (

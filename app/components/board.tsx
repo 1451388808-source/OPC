@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { BoardData } from "@/lib/application/board";
 import type { Status, Task } from "@/lib/domain/task";
@@ -22,7 +23,12 @@ async function postJson(url: string, body?: unknown) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body ?? {}),
   });
-  const payload = (await response.json()) as { error?: string; exportWarning?: string | null; taskId?: string };
+  const payload = (await response.json()) as {
+    error?: string;
+    exportWarning?: string | null;
+    taskId?: string;
+    runId?: string;
+  };
   if (!response.ok) throw new Error(payload.error || "操作没有完成");
   return payload;
 }
@@ -60,6 +66,12 @@ export function BoardView({
     board.tasks.filter((task) => task.priority === "now" && task.status === status);
   const upcoming = board.tasks.filter((task) => task.priority === "next");
   const selected = board.tasks.find((task) => task.id === selectedId) ?? null;
+  const selectedRuns = selected ? board.taskRuns.filter((run) => run.taskId === selected.id) : [];
+  const selectedRun = selectedRuns[0] ?? null;
+  const selectedWorkflows = selected
+    ? board.taskWorkflows.filter((workflow) => workflow.taskId === selected.id)
+    : [];
+  const selectedWorkflow = selectedWorkflows[0] ?? null;
   const roleName = (id: string) => board.roles.find((role) => role.id === id)?.name ?? id;
 
   function openTask(id: string) {
@@ -227,6 +239,10 @@ export function BoardView({
               reason={reason}
               record={record}
               pending={pending}
+              projects={board.dispatchProjects}
+              roles={board.roles.map((role) => ({ id: role.id, name: role.name }))}
+              run={selectedRun}
+              workflow={selectedWorkflow}
               onDecision={setDecision}
               onReason={setReason}
               onRecord={setRecord}
@@ -234,6 +250,13 @@ export function BoardView({
                 void run(() => postJson(`/api/tasks/${selected.id}/approve`, { decision, record }))
               }
               onReturn={() => void run(() => postJson(`/api/tasks/${selected.id}/return`, { reason }))}
+              onDispatch={(projectId) =>
+                void run(() =>
+                  postJson(`/api/tasks/${selected.id}/dispatch`, {
+                    projectId,
+                  }),
+                )
+              }
             />
           ) : (
             <p className="empty" style={{ padding: 16 }}>
@@ -278,11 +301,16 @@ function Detail({
   reason,
   record,
   pending,
+  projects,
+  roles,
+  run,
+  workflow,
   onDecision,
   onReason,
   onRecord,
   onApprove,
   onReturn,
+  onDispatch,
 }: {
   task: Task;
   roleName: string;
@@ -290,13 +318,26 @@ function Detail({
   reason: string;
   record: boolean;
   pending: boolean;
+  projects: BoardData["dispatchProjects"];
+  roles: { id: string; name: string }[];
+  run: BoardData["taskRuns"][number] | null;
+  workflow: BoardData["taskWorkflows"][number] | null;
   onDecision: (value: string) => void;
   onReason: (value: string) => void;
   onRecord: (value: boolean) => void;
   onApprove: () => void;
   onReturn: () => void;
+  onDispatch: (projectId: string) => void;
 }) {
   const canReview = task.status === "review";
+  const activeRun = run && ["queued", "running", "review", "applying"].includes(run.status);
+  const activeWorkflow = workflow && !["approved", "failed", "cancelled"].includes(workflow.status);
+  const runProject = run ? projects.find((project) => project.id === run.projectId) : null;
+  const canDispatch =
+    task.priority === "now" &&
+    (task.status === "inbox" || task.status === "doing") &&
+    !activeRun &&
+    !activeWorkflow;
   return (
     <>
       <div className="detail-head">
@@ -358,6 +399,47 @@ function Detail({
             </>
           ) : null}
         </div>
+        {run && runProject ? (
+          <div className="section task-run-section">
+            <h3>员工执行</h3>
+            <p>
+              {runProject.companyName} / {runProject.name} · {roles.find((role) => role.id === run.roleId)?.name ?? run.roleId}
+              {" · "}
+              {run.status}
+            </p>
+            <Link
+              className="ghost task-run-link"
+              href={`/company/${runProject.companyId}/p/${runProject.id}?view=runs&run=${run.id}`}
+            >
+              查看执行
+            </Link>
+          </div>
+        ) : null}
+        {workflow ? (
+          <div className="section task-run-section">
+            <h3>项目团队协作</h3>
+            <p>
+              {projects.find((project) => project.id === workflow.projectId)?.name ?? workflow.projectId}
+              {" · "}
+              {roles.find((role) => role.id === workflow.coordinatorRoleId)?.name ?? workflow.coordinatorRoleId}
+              {" · "}
+              {workflow.status}
+            </p>
+            <Link
+              className="ghost task-run-link"
+              href={`/company/${projects.find((project) => project.id === workflow.projectId)?.companyId}/p/${workflow.projectId}`}
+            >
+              查看群聊协作
+            </Link>
+          </div>
+        ) : null}
+        {canDispatch ? (
+          <TaskDispatch
+            projects={projects}
+            pending={pending}
+            onDispatch={onDispatch}
+          />
+        ) : null}
       </div>
       <div className="actions">
         <button className="primary" type="button" disabled={!canReview || pending} onClick={onApprove}>
@@ -368,5 +450,50 @@ function Detail({
         </button>
       </div>
     </>
+  );
+}
+
+function TaskDispatch({
+  projects,
+  pending,
+  onDispatch,
+}: {
+  projects: BoardData["dispatchProjects"];
+  pending: boolean;
+  onDispatch: (projectId: string) => void;
+}) {
+  const available = projects.filter((project) => project.members.length > 0);
+  const [projectId, setProjectId] = useState(available[0]?.id ?? "");
+  const project = available.find((item) => item.id === projectId) ?? available[0];
+
+  return (
+    <div className="section task-dispatch">
+      <h3>交给项目团队</h3>
+      {available.length === 0 ? <p className="empty">先在公司项目里添加员工。</p> : null}
+      {available.length > 0 ? (
+        <div className="task-dispatch-controls">
+          <select
+            aria-label="派工项目"
+            value={project?.id ?? ""}
+            onChange={(event) => setProjectId(event.target.value)}
+            disabled={pending}
+          >
+            {available.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.companyName} / {item.name}
+              </option>
+            ))}
+          </select>
+          <button
+            className="primary"
+            type="button"
+            disabled={pending || !project?.id}
+            onClick={() => onDispatch(project!.id)}
+          >
+            {pending ? "正在派工" : "交给项目团队"}
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }

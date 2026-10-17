@@ -1,4 +1,5 @@
 import type { EmployeeToolDefinition, EmployeeToolset } from "./tools";
+import { ToolExecutionError, toolFailureFromUnknown, type ToolFailure } from "../mcp/error.ts";
 
 export type ToolModelCall = {
   id: string;
@@ -23,6 +24,8 @@ export interface ToolCallingModel {
     messages: ToolModelMessage[];
     tools: EmployeeToolDefinition[];
     signal: AbortSignal;
+    onReasoningDelta: (delta: string) => Promise<void>;
+    onTextDelta: (delta: string) => Promise<void>;
   }): Promise<ToolModelTurn>;
 }
 
@@ -66,12 +69,24 @@ export async function executeToolLoop(input: {
 
   try {
     for (let round = 0; round < maxRounds; round += 1) {
+      let streamedReasoning = false;
+      let streamedText = false;
       const turn = await Promise.race([
         input.model.complete({
           model: input.modelName,
           messages: [...messages],
           tools: input.tools.definitions,
           signal: controller.signal,
+          onReasoningDelta: async (delta) => {
+            if (!delta) return;
+            streamedReasoning = true;
+            await input.emit({ kind: "reasoning", body: { text: delta, delta: true } });
+          },
+          onTextDelta: async (delta) => {
+            if (!delta) return;
+            streamedText = true;
+            await input.emit({ kind: "message", body: { text: delta, delta: true } });
+          },
         }),
         new Promise<never>((_resolve, reject) => {
           controller.signal.addEventListener(
@@ -87,12 +102,14 @@ export async function executeToolLoop(input: {
         reasoning: turn.reasoning,
         toolCalls: turn.toolCalls,
       });
-      if (turn.reasoning) await input.emit({ kind: "reasoning", body: { text: turn.reasoning } });
+      if (turn.reasoning && !streamedReasoning) {
+        await input.emit({ kind: "reasoning", body: { text: turn.reasoning } });
+      }
 
       if (turn.toolCalls.length === 0) {
         const summary = turn.text.trim();
         if (!summary) throw new Error("模型没有给出完成摘要");
-        await input.emit({ kind: "message", body: { text: summary } });
+        if (!streamedText) await input.emit({ kind: "message", body: { text: summary } });
         return { summary, changedPaths: await input.tools.changedPaths() };
       }
 
@@ -109,22 +126,27 @@ export async function executeToolLoop(input: {
           kind: "tool_call",
           body: { id: call.id, name: call.name, arguments: call.arguments },
         });
-        let response: { ok: true; result: unknown } | { ok: false; error: string };
+        let response: { ok: true; result: unknown } | { ok: false; error: ToolFailure };
         try {
           const parsed = JSON.parse(call.arguments) as unknown;
           response = { ok: true, result: await input.tools.execute(call.name, parsed) };
         } catch (error) {
-          response = { ok: false, error: error instanceof Error ? error.message : "工具调用失败" };
+          response = { ok: false, error: toolFailureFromUnknown(error) };
         }
         const content = JSON.stringify(response);
         messages.push({ role: "tool", toolCallId: call.id, name: call.name, content });
         await input.emit({ kind: "tool_result", body: { id: call.id, name: call.name, ...response } });
         if (!response.ok) {
-          const key = `${call.name}:${response.error}`;
+          if (!response.error.retryable) {
+            throw new ToolExecutionError(response.error);
+          }
+          const key = `${call.name}:${response.error.code}:${response.error.message}`;
           const count = (equivalentErrors.get(key) ?? 0) + 1;
           equivalentErrors.set(key, count);
           if (count >= maxEquivalentErrors) {
-            throw new Error(`同类工具错误达到 ${maxEquivalentErrors} 次：${response.error}`);
+            throw new Error(
+              `同类工具错误达到 ${maxEquivalentErrors} 次 [${response.error.code}]：${response.error.message}`,
+            );
           }
         }
       }
